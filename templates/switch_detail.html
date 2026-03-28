@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Switch Management - {{ switch_ip }}{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item active" aria-current="page">Switch {{ switch_ip }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="switch-detail-header">
+    <div class="switch-meta">
+        <h2>Managing Switch: <span class="ip">{{ switch_ip }}</span></h2>
+    </div>
+    <button class="btn btn-success" onclick="saveToMemory()">
+        💾 Save Running-Config
+    </button>
+</div>
+
+<!-- Modal for editing ports -->
+<div class="modal" id="editModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configure Port: <span id="targetInt"></span></h5>
+                <button type="button" class="btn-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Switchport Mode</label>
+                    <select id="portMode" class="form-control" onchange="toggleModeFields()">
+                        <option value="access">Access</option>
+                        <option value="trunk">Trunk</option>
+                    </select>
+                </div>
+
+                <div id="accessFields" class="form-group">
+                    <label class="form-label">Access VLAN ID</label>
+                    <input type="number" id="vlanInput" class="form-control" placeholder="e.g. 10">
+                </div>
+
+                <div id="trunkFields" class="form-group d-none">
+                    <label class="form-label">Allowed VLANs</label>
+                    <input type="text" id="allowedVlanInput" class="form-control"
+                        placeholder="e.g. 10,20 or all">
+                    <small class="text-muted text-small mt-1 d-block">
+                        Type "all" for all VLANs or comma-separated list
+                    </small>
+                </div>
+
+                <!-- RSTP Section -->
+                <div class="rstp-section">
+                    <div class="rstp-label">⚡ Rapid Spanning Tree (RSTP)</div>
+                    <div class="rstp-toggle-row">
+                        <label class="rstp-switch">
+                            <input type="checkbox" id="rstpToggle" onchange="updateRstpLabel()">
+                            <span class="rstp-slider"></span>
+                        </label>
+                        <span class="rstp-status-text disabled" id="rstpStatusText">Disabled</span>
+                    </div>
+                    <div class="rstp-hint">Enables PortFast + BPDUGuard on this interface (access ports only)
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-3"
+                        onclick="submitRstpChange()">
+                        Apply RSTP Setting
+                    </button>
+                </div>
+
+                <!-- Port Isolation Section -->
+                <div class="isolation-section">
+                    <div class="isolation-label">🔒 Port Isolation</div>
+                    <div class="isolation-toggle-row">
+                        <label class="isolation-switch">
+                            <input type="checkbox" id="isolationToggle" onchange="updateIsolationLabel()">
+                            <span class="isolation-slider"></span>
+                        </label>
+                        <span class="isolation-status-text not-isolated" id="isolationStatusText">Not
+                            Isolated</span>
+                    </div>
+                    <div class="isolation-hint">Blocks traffic between protected ports on the same switch
+                        (switchport protected)</div>
+                    <button type="button" class="btn btn-sm btn-outline-danger mt-3"
+                        onclick="submitIsolationChange()">
+                        Apply Isolation Setting
+                    </button>
+                </div>
+
+                <!-- Port Shutdown Section -->
+                <div class="shutdown-section">
+                    <div class="shutdown-label">⛔ Port Admin State</div>
+                    <div class="shutdown-toggle-row">
+                        <label class="shutdown-switch">
+                            <input type="checkbox" id="shutdownToggle" onchange="updateShutdownLabel()">
+                            <span class="shutdown-slider"></span>
+                        </label>
+                        <span class="shutdown-status-text active" id="shutdownStatusText">Active (No
+                            Shutdown)</span>
+                    </div>
+                    <div class="shutdown-hint">Toggle ON to Shutdown the port (administratively down).</div>
+                    <button type="button" class="btn btn-sm btn-danger mt-3"
+                        onclick="submitShutdownChange()">
+                        Apply Admin State
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" onclick="closeModal()">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="submitPortChange()">Apply
+                    Configuration</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ports Table -->
+<div class="table-container glass-card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Port</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>VLAN</th>
+                <th>Duplex/Speed</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for port in ports %}
+            <tr>
+                <td><span class="port-name">{{ port.port }}</span></td>
+                <td>{{ port.name }}</td>
+                <td>
+                    <span
+                        class="badge {% if port.status == 'connected' %}badge-success{% else %}badge-secondary{% endif %}">
+                        {{ port.status }}
+                    </span>
+                </td>
+                <td>{{ port.vlan_id }}</td>
+                <td>{{ port.duplex }}/{{ port.speed }}</td>
+                <td>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-warning" onclick="openEditModal('{{ port.port }}')">
+                            Manage
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger"
+                            onclick="confirmDefault('{{ port.port }}')">
+                            Reset
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let currentPort = "";
+
+    function openEditModal(portName) {
+        currentPort = portName;
+        document.getElementById('targetInt').innerText = portName;
+        document.getElementById('editModal').classList.add('show');
+
+        // Fetch current RSTP status for this port
+        fetch(`/rstp_status?ip={{ switch_ip }}&interface=${encodeURIComponent(portName)}`)
+            .then(res => res.json())
+            .then(data => {
+                const isEnabled = data.portfast === true;
+                document.getElementById('rstpToggle').checked = isEnabled;
+                updateRstpLabel();
+            })
+            .catch(() => {
+                document.getElementById('rstpToggle').checked = false;
+                updateRstpLabel();
+            });
+
+        // Fetch current Port Isolation status for this port
+        fetch(`/port_isolation_status?ip={{ switch_ip }}&interface=${encodeURIComponent(portName)}`)
+            .then(res => res.json())
+            .then(data => {
+                const isIsolated = data.isolated === true;
+                document.getElementById('isolationToggle').checked = isIsolated;
+                updateIsolationLabel();
+            })
+            .catch(() => {
+                document.getElementById('isolationToggle').checked = false;
+                updateIsolationLabel();
+            });
+
+        // Fetch current Shutdown status for this port
+        fetch(`/port_shutdown_status?ip={{ switch_ip }}&interface=${encodeURIComponent(portName)}`)
+            .then(res => res.json())
+            .then(data => {
+                // data.shutdown = True means port is SHUTDOWN (Admin Down)
+                const isShutdown = data.shutdown === true;
+                document.getElementById('shutdownToggle').checked = isShutdown;
+                updateShutdownLabel();
+            })
+            .catch(() => {
+                // Default to unchecked (Active/No Shutdown) if fail
+                document.getElementById('shutdownToggle').checked = false;
+                updateShutdownLabel();
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('editModal').classList.remove('show');
+    }
+
+    function toggleModeFields() {
+        const mode = document.getElementById('portMode').value;
+        const accessDiv = document.getElementById('accessFields');
+        const trunkDiv = document.getElementById('trunkFields');
+
+        if (mode === 'access') {
+            accessDiv.classList.remove('d-none');
+            trunkDiv.classList.add('d-none');
+        } else {
+            accessDiv.classList.add('d-none');
+            trunkDiv.classList.remove('d-none');
+        }
+    }
+
+    function submitPortChange() {
+        const mode = document.getElementById('portMode').value;
+        const vlan = document.getElementById('vlanInput').value;
+        const allowedVlans = document.getElementById('allowedVlanInput').value;
+
+        fetch('/update_port_mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ip: "{{ switch_ip }}",
+                interface: currentPort,
+                mode: mode,
+                vlan: vlan,
+                allowed: allowedVlans
+            })
+        }).then(res => {
+            if (res.ok) {
+                alert("Configuration Applied Successfully!");
+                location.reload();
+            } else {
+                alert("Error applying configuration.");
+            }
+        });
+    }
+
+    function updateRstpLabel() {
+        const enabled = document.getElementById('rstpToggle').checked;
+        const label = document.getElementById('rstpStatusText');
+        if (enabled) {
+            label.textContent = 'Enabled';
+            label.className = 'rstp-status-text enabled';
+        } else {
+            label.textContent = 'Disabled';
+            label.className = 'rstp-status-text disabled';
+        }
+    }
+
+    function submitRstpChange() {
+        const enable = document.getElementById('rstpToggle').checked;
+        fetch('/configure_rstp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ip: "{{ switch_ip }}",
+                interface: currentPort,
+                enable: enable
+            })
+        }).then(res => {
+            if (res.ok) {
+                alert(`RSTP ${enable ? 'Enabled' : 'Disabled'} on ${currentPort} successfully!`);
+            } else {
+                alert('Error applying RSTP configuration.');
+            }
+        });
+    }
+
+    function updateIsolationLabel() {
+        const isolated = document.getElementById('isolationToggle').checked;
+        const label = document.getElementById('isolationStatusText');
+        if (isolated) {
+            label.textContent = 'Isolated';
+            label.className = 'isolation-status-text isolated';
+        } else {
+            label.textContent = 'Not Isolated';
+            label.className = 'isolation-status-text not-isolated';
+        }
+    }
+
+    function submitIsolationChange() {
+        const enable = document.getElementById('isolationToggle').checked;
+        fetch('/configure_port_isolation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ip: "{{ switch_ip }}",
+                interface: currentPort,
+                enable: enable
+            })
+        }).then(res => {
+            if (res.ok) {
+                alert(`Port Isolation ${enable ? 'Enabled' : 'Disabled'} on ${currentPort} successfully!`);
+            } else {
+                alert('Error applying port isolation configuration.');
+            }
+        });
+    }
+
+    function updateShutdownLabel() {
+        const isShutdown = document.getElementById('shutdownToggle').checked;
+        const label = document.getElementById('shutdownStatusText');
+        if (isShutdown) {
+            label.textContent = 'SHUTDOWN (Admin Down)';
+            label.className = 'shutdown-status-text shutdown';
+        } else {
+            label.textContent = 'Active (No Shutdown)';
+            label.className = 'shutdown-status-text active';
+        }
+    }
+
+    function submitShutdownChange() {
+        const enable = document.getElementById('shutdownToggle').checked;
+        // enable=True means we want to configure 'shutdown'
+        // enable=False means we want to configure 'no shutdown'
+
+        fetch('/configure_port_shutdown', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ip: "{{ switch_ip }}",
+                interface: currentPort,
+                enable: enable
+            })
+        }).then(res => {
+            if (res.ok) {
+                alert(`Port is now ${enable ? 'SHUTDOWN' : 'ACTIVE (No Shutdown)'}!`);
+                location.reload(); // Reload to see status change in table
+            } else {
+                alert('Error applying port shutdown configuration.');
+            }
+        });
+    }
+
+    function confirmDefault(portName) {
+        if (confirm("Are you sure you want to reset " + portName + " to default configuration?")) {
+            fetch('/default_port', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ip: "{{ switch_ip }}",
+                    interface: portName
+                })
+            }).then(res => {
+                if (res.ok) {
+                    alert(portName + " has been reset to default.");
+                    location.reload();
+                } else {
+                    alert("Error resetting port.");
+                }
+            });
+        }
+    }
+
+    function saveToMemory() {
+        if (confirm("Write running-config to startup-config?")) {
+            fetch('/save_config', {
+                method: 'POST',
+                body: JSON.stringify({ ip: "{{ switch_ip }}" }),
+                headers: { 'Content-Type': 'application/json' }
+            }).then(res => {
+                if (res.ok) {
+                    alert("Configuration Saved to NVRAM!");
+                } else {
+                    alert("Error saving configuration.");
+                }
+            });
+        }
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('editModal').addEventListener('click', function (e) {
+        if (e.target === this) {
+            closeModal();
+        }
+    });
+</script>
+{% endblock %}

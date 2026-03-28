@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Network Management Dashboard{% endblock %}
+
+{% block breadcrumbs %}
+<!-- Dashboard is Home, so no extra breadcrumb needed -->
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+   <div>
+      <h1>Network Management</h1>
+      <p>Monitor and configure your network infrastructure</p>
+   </div>
+  
+   <!-- MAC Search Box -->
+   <div class="mac-search-container">
+       <div class="mac-search-box">
+           <input type="text" id="mac-address-input" class="mac-search-input"
+               placeholder="Enter MAC address (e.g. 0011.2233.4455)">
+           <button id="search-mac-btn" class="btn btn-primary">Search</button>
+       </div>
+       <div id="mac-search-results" class="mac-results"></div>
+   </div>
+</div>
+
+<div class="switches-grid">
+    {% for sw in switches %}
+    <div class="switch-card glass-card">
+        <div class="switch-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 64 64" fill="none">
+                <!-- Switch body -->
+                <rect x="4" y="22" width="56" height="20" rx="4" fill="white" fill-opacity="0.15" stroke="white"
+                    stroke-width="2.5" />
+                <!-- Port holes row -->
+                <rect x="10" y="28" width="5" height="8" rx="1.5" fill="white" fill-opacity="0.9" />
+                <rect x="19" y="28" width="5" height="8" rx="1.5" fill="white" fill-opacity="0.9" />
+                <rect x="28" y="28" width="5" height="8" rx="1.5" fill="white" fill-opacity="0.9" />
+                <rect x="37" y="28" width="5" height="8" rx="1.5" fill="white" fill-opacity="0.9" />
+                <!-- Uplink port (slightly taller) -->
+                <rect x="48" y="26" width="8" height="12" rx="2" fill="white" />
+                <!-- Activity LEDs -->
+                <circle cx="12.5" cy="24" r="1.5" fill="#4ade80" />
+                <circle cx="21.5" cy="24" r="1.5" fill="#4ade80" />
+                <circle cx="30.5" cy="24" r="1.5" fill="#facc15" />
+                <circle cx="39.5" cy="24" r="1.5" fill="#4ade80" />
+                <!-- Up/down arrows on uplink -->
+                <path d="M52 14 L52 22" stroke="white" stroke-width="2" stroke-linecap="round" />
+                <path d="M49 17 L52 14 L55 17" stroke="white" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                <path d="M52 50 L52 42" stroke="white" stroke-width="2" stroke-linecap="round" />
+                <path d="M49 47 L52 50 L55 47" stroke="white" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+        </div>
+        <h3 class="switch-name">{{ sw.name }}</h3>
+        <div class="switch-ip">{{ sw.ip }}</div>
+        <a href="/switch/{{ sw.ip }}" class="btn btn-outline-primary manage-btn">
+            Manage Switch
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+    document.getElementById('search-mac-btn').addEventListener('click', async () => {
+        const macInput = document.getElementById('mac-address-input');
+        const macAddress = macInput.value.trim();
+        const resultsDiv = document.getElementById('mac-search-results');
+
+        if (!macAddress) {
+            alert('Please enter a MAC address');
+            return;
+        }
+
+        resultsDiv.innerHTML = '<div class="text-center"><p>Searching all switches... this may take a few seconds.</p></div>';
+
+        try {
+            const response = await fetch('/search_mac', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mac_address: macAddress })
+            });
+
+            const data = await response.json();
+
+            if (data.results && data.results.length > 0) {
+                resultsDiv.innerHTML = '';
+                data.results.forEach(res => {
+                    res.entries.forEach(entry => {
+                        const item = document.createElement('div');
+                        item.className = 'mac-result-item';
+                        item.innerHTML = `
+                            <div class="mac-result-header">
+                                <span class="mac-result-switch">${res.switch_name} (${res.switch_ip})</span>
+                                <span class="badge badge-success">${entry.type}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted">VLAN:</span> <span class="mac-result-vlan">${entry.vlan}</span>
+                                    <span class="mac-result-divider">|</span>
+                                    <span class="text-muted">MAC:</span> <span class="mac-result-mac">${entry.mac}</span>
+                                </div>
+                                <div class="mac-result-port">${entry.port}</div>
+                            </div>
+                        `;
+                        resultsDiv.appendChild(item);
+                    });
+                });
+            } else {
+                resultsDiv.innerHTML = '<div class="text-center"><p class="text-muted">No matching MAC address found on any switch.</p></div>';
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            resultsDiv.innerHTML = '<div class="text-center"><p class="text-danger">An error occurred while searching.</p></div>';
+        }
+    });
+</script>
+{% endblock %}

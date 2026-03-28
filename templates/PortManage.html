@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Port Management{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item active" aria-current="page">Manage Ports</li>
+{% endblock %}
+
+{% block content %}
+<h3 class="port-manage-header">Ports for <span class="port-manage-ip">{{ switch_ip }}</span></h3>
+
+<div class="table-container glass-card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Interface</th>
+                <th>Status</th>
+                <th>VLAN</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for port in ports %}
+            <tr>
+                <td><span class="port-interface-name">{{ port.interface }}</span></td>
+                <td>
+                    <span
+                        class="badge {% if port.status == 'connected' %}badge-success{% else %}badge-danger{% endif %}">
+                        {{ port.status }}
+                    </span>
+                </td>
+                <td>{{ port.vlan }}</td>
+                <td>
+                    <button class="btn btn-sm btn-warning"
+                        onclick="editPort('{{ port.interface }}')">Edit</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function editPort(interfaceName) {
+        alert('Edit functionality for ' + interfaceName);
+        // Add your edit logic here
+    }
+</script>
+{% endblock %}

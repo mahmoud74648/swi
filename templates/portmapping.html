@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}Port Mapping | Network Management{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item active" aria-current="page">Port Mapping</li>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="page-header">
+    <div class="page-header-left">
+        <h1>🗺️ Port Mapping</h1>
+        <p>Complete port-to-device mapping reference — imported from FINAL-PORT-MAP</p>
+    </div>
+</div>
+
+{% if error %}
+<div class="error-banner">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+        <path
+            d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+    </svg>
+    {{ error }}
+</div>
+{% endif %}
+
+<!-- ════════════════════════════════════
+     GLOBAL CROSS-SHEET SEARCH
+════════════════════════════════════ -->
+<div class="global-search-section collapsed" id="global-search-section">
+    <div class="global-search-header" onclick="toggleGlobalSearch()">
+        <div class="global-search-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path
+                    d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+            </svg>
+            Global Search
+            <span class="search-subtitle">— Search across all sheets</span>
+        </div>
+        <div class="search-toggle-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+            </svg>
+        </div>
+    </div>
+
+    <div class="global-search-content">
+        <div class="global-search-bar">
+            <div class="global-search-input-wrap">
+                <input type="text" id="global-search-input" class="global-search-input"
+                    placeholder="e.g. B-L3-R1-D-A01 or SW2-5 or CCTV …" autocomplete="off" spellcheck="false">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor"
+                    viewBox="0 0 16 16">
+                    <path
+                        d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                </svg>
+            </div>
+        </div>
+        <div class="search-hint">Type at least 2 characters to search labels across all sheets and floors</div>
+
+        <!-- Results -->
+        <div class="search-results-area" id="search-results-area" style="display:none;">
+            <div class="search-results-header">
+                <div class="search-results-count" id="search-results-count"></div>
+                <button class="clear-search-btn" onclick="clearGlobalSearch()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor"
+                        viewBox="0 0 16 16">
+                        <path
+                            d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854z" />
+                    </svg>
+                    Clear
+                </button>
+            </div>
+            <div class="search-spinner" id="search-spinner">
+                <span class="spinner-ring"></span> Searching all sheets…
+            </div>
+            <div class="results-grid" id="results-grid"></div>
+        </div>
+
+        <div class="search-idle" id="search-idle">
+           
+            Search by cable label, switch port, or discipline across all locations
+        </div>
+    </div>
+</div>
+
+{% if sheets %}
+
+<!-- Divider between search and sheet browser -->
+<div class="section-divider">Browse by Sheet</div>
+
+<!-- Stats pills -->
+{% set ns = namespace(total=0) %}
+{% for sheet in sheets %}{% set ns.total = ns.total + (sheet.rows | length) %}{% endfor %}
+<div class="stats-row">
+    <div class="stat-pill">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+            <path
+                d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z" />
+            <path
+                d="M5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 8zm0-2.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5z" />
+        </svg>
+        Sheets: <span>{{ sheets | length }}</span>
+    </div>
+    <div class="stat-pill">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+            <path
+                d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm5 0a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2H5z" />
+        </svg>
+        Total Rows: <span>{{ ns.total }}</span>
+    </div>
+</div>
+
+<!-- Sheet Tabs -->
+<div class="tabs-wrapper" id="sheet-tabs">
+    {% for sheet in sheets %}
+    <button class="tab-btn {% if loop.first %}active{% endif %}"
+        data-tab-index="{{ loop.index0 }}"
+        id="tab-{{ loop.index0 }}">
+        {{ sheet.name }}
+        <span class="tab-count">({{ sheet.rows|length }})</span>
+    </button>
+    {% endfor %}
+</div>
+
+<!-- Sheet Panels -->
+{% for sheet in sheets %}
+<div class="sheet-panel {% if loop.first %}active{% endif %}" id="panel-{{ loop.index0 }}">
+
+    <div class="table-toolbar">
+        <div class="row-count" id="count-{{ loop.index0 }}">
+            Showing <strong>{{ sheet.rows | length }}</strong> rows
+        </div>
+        <div class="search-box">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor"
+                viewBox="0 0 16 16">
+                <path
+                    d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+            </svg>
+            <input type="text" class="search-input sheet-filter-input" placeholder="Filter in {{ sheet.name }}…"
+                data-sheet-index="{{ loop.index0 }}" id="search-{{ loop.index0 }}" />
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        {% if sheet.rows %}
+        <table class="data-table" id="table-{{ loop.index0 }}">
+            <thead>
+                <tr>
+                    <th class="th-index">#</th>
+                    {% for col in sheet.headers %}<th>{{ col }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody id="tbody-{{ loop.index0 }}">
+                {% for row in sheet.rows %}
+                <tr>
+                    <td class="td-index">{{ loop.index }}</td>
+                    {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor"
+                viewBox="0 0 16 16">
+                <path
+                    d="M14 4.5V11h-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5L14 4.5z" />
+            </svg>
+            <p>No data rows in this sheet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% elif not error %}
+<div class="empty-state glass-card empty-state-large">
+    <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M14 4.5V11h-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5L14 4.5z" />
+    </svg>
+    <p>No sheets found in the port mapping file.</p>
+</div>
+{% endif %}
+
+<script>
+    /* ═══════════════════════════════════════════════════
+       GLOBAL SEARCH
+    ═══════════════════════════════════════════════════ */
+    /* ── Collapsible Search ── */
+    function toggleGlobalSearch() {
+        const section = document.getElementById('global-search-section');
+        const icon = section.querySelector('.search-toggle-icon svg path');
+        
+        section.classList.toggle('collapsed');
+        
+        if (section.classList.contains('collapsed')) {
+            // Closed state: Chevron Down
+            icon.setAttribute('d', 'M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z');
+        } else {
+            // Open state: Chevron Up
+            icon.setAttribute('d', 'M1.646 11.354a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1-.708.708L8 5.707l-5.646 5.647a.5.5 0 0 1-.708 0z');
+        }
+    }
+
+    let searchTimer = null;
+
+    const inputEl = document.getElementById('global-search-input');
+    const areaEl = document.getElementById('search-results-area');
+    const idleEl = document.getElementById('search-idle');
+    const gridEl = document.getElementById('results-grid');
+    const countEl = document.getElementById('search-results-count');
+    const spinnerEl = document.getElementById('search-spinner');
+
+    inputEl.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        const q = inputEl.value.trim();
+
+        if (q.length < 2) {
+            areaEl.style.display = 'none';
+            idleEl.style.display = '';
+            return;
+        }
+
+        // Show spinner immediately
+        idleEl.style.display = 'none';
+        areaEl.style.display = '';
+        spinnerEl.style.display = '';
+        gridEl.innerHTML = '';
+        countEl.textContent = '';
+
+        searchTimer = setTimeout(() => doSearch(q), 300);
+    });
+
+    async function doSearch(q) {
+        try {
+            const res = await fetch('/portmapping/search?q=' + encodeURIComponent(q));
+            const data = await res.json();
+            spinnerEl.style.display = 'none';
+
+            if (data.error) {
+                gridEl.innerHTML = `<div class="search-idle col-span-full text-danger">${data.error}</div>`;
+                return;
+            }
+
+            renderResults(data.results, q);
+        } catch (e) {
+            spinnerEl.style.display = 'none';
+            gridEl.innerHTML = `<div class="search-idle col-span-full text-danger">Network error: ${e.message}</div>`;
+        }
+    }
+
+    function renderResults(results, q) {
+        if (!results || results.length === 0) {
+            countEl.innerHTML = '<strong>0</strong> results found';
+            gridEl.innerHTML = `
+                <div class="search-idle col-span-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/>
+                    </svg>
+                    <p>No matches found for "<strong class="text-accent">${escHtml(q)}</strong>"</p>
+                </div>`;
+            return;
+        }
+
+        countEl.innerHTML = `Found <strong>${results.length}</strong> result${results.length !== 1 ? 's' : ''}`;
+
+        const html = results.map((r, idx) => {
+            const labelHtml = highlight(escHtml(r.label), q);
+            const discClass = getDisciplineClass(r.discipline);
+            const discTag = r.discipline
+                ? `<span class="disc-tag ${discClass}">${escHtml(r.discipline)}</span>`
+                : '';
+            const swBadge = r.switch_port
+                ? `<div class="sw-port-badge">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                           <path d="M1 2a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5H13a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9.5a.5.5 0 0 0 0 1H13a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2z"/>
+                       </svg>
+                       Switch Port: <strong>${escHtml(r.switch_port)}</strong>
+                   </div>`
+                : '<div class="sw-port-badge opacity-40">Switch Port: —</div>';
+
+            return `
+            <div class="result-card" style="animation-delay:${idx * 30}ms">
+                <div class="result-location">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M2 13.5V7h1v6.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V7h1v6.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5zm11-11V6l-2-2V2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5z"/>
+                        <path fill-rule="evenodd" d="M7.293 1.5a1 1 0 0 1 1.414 0l6.647 6.646-.708.708L8 2.207 1.354 8.854l-.708-.708L7.293 1.5z"/>
+                    </svg>
+                    ${escHtml(r.location)}
+                </div>
+                <div class="result-label">${labelHtml}</div>
+                <div class="result-details">
+                    <div class="result-detail-item">
+                        <span class="detail-key">PP</span>
+                        <span class="detail-val">${escHtml(r.pp)}</span>
+                    </div>
+                    <span class="detail-sep">•</span>
+                    <div class="result-detail-item">
+                        <span class="detail-key">Port</span>
+                        <span class="detail-val">${escHtml(r.port)}</span>
+                    </div>
+                    ${r.discipline ? `<span class="detail-sep">•</span>${discTag}` : ''}
+                </div>
+                ${swBadge}
+            </div>`;
+        }).join('');
+
+        gridEl.innerHTML = html;
+    }
+
+    function clearGlobalSearch() {
+        inputEl.value = '';
+        areaEl.style.display = 'none';
+        idleEl.style.display = '';
+        gridEl.innerHTML = '';
+    }
+
+    function getDisciplineClass(disc) {
+        const map = { DATA: 'disc-DATA', CCTV: 'disc-CCTV', TV: 'disc-TV', AP: 'disc-AP', ACC: 'disc-ACC' };
+        return map[disc] || 'disc-other';
+    }
+
+    function highlight(text, query) {
+        if (!query) return text;
+        const regex = new RegExp('(' + escRegex(query) + ')', 'gi');
+        return text.replace(regex, '<mark>$1</mark>');
+    }
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function escRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    /* ═══════════════════════════════════════════════════
+       SHEET TABS
+    ═══════════════════════════════════════════════════ */
+    // Event delegation for tab switching
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.tab-btn');
+        if (btn && btn.dataset.tabIndex !== undefined) {
+            switchTab(btn.dataset.tabIndex, btn);
+        }
+    });
+
+    function switchTab(index, btn) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + index).classList.add('active');
+        const inp = document.getElementById('search-' + index);
+        if (inp) { inp.value = ''; filterTable(index, ''); }
+    }
+
+    /* ── Per-sheet filter ── */
+    function filterTable(index, query) {
+        const tbody = document.getElementById('tbody-' + index);
+        const countEl2 = document.getElementById('count-' + index);
+        if (!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const term = query.trim().toLowerCase();
+        let visible = 0;
+
+        rows.forEach(row => {
+            const match = !term || row.innerText.toLowerCase().includes(term);
+            row.style.display = match ? '' : 'none';
+            if (match) visible++;
+
+            row.querySelectorAll('td').forEach(td => {
+                if (!term) {
+                    td.innerHTML = td.textContent;
+                } else {
+                    const orig = td.textContent;
+                    const regex = new RegExp('(' + escRegex(term) + ')', 'gi');
+                    td.innerHTML = orig.replace(regex, '<mark>$1</mark>');
+                }
+            });
+        });
+
+        countEl2.innerHTML = `Showing <strong>${visible}</strong> of <strong>${rows.length}</strong> rows`;
+    }
+
+    /* ── Event Listener for Per-Sheet Search ── */
+    document.addEventListener('input', function(e) {
+        if (e.target.classList.contains('sheet-filter-input')) {
+            filterTable(e.target.dataset.sheetIndex, e.target.value);
+        }
+    });
+</script>
+{% endblock %}

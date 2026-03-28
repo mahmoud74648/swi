@@ -1,0 +1,120 @@
+pipeline {
+
+  /* ----------------------------------------------------
+   *  Default build node
+   * ---------------------------------------------------*/
+  agent { label 'master' }
+
+  /* ----------------------------------------------------
+   *  Global options
+   * ---------------------------------------------------*/
+  options {
+    disableConcurrentBuilds()
+    timestamps()
+  }
+
+  /* ----------------------------------------------------
+   *  Environment variables
+   * ---------------------------------------------------*/
+  environment {
+    GIT_REPO_URL        = 'http://172.20.70.20/DefaultCollection/FOE/_git/FOE.SwitchesControl'
+    GIT_CREDENTIALS_ID  = 'FOEDevOps'
+
+    IMAGE_REPO_NAME     = 'foe.network.admin'
+    IMAGE_TAG           = 'prod'
+    REGISTRY_HOST       = '172.20.70.34:5000'
+    IMAGE_URI           = "${REGISTRY_HOST}/${IMAGE_REPO_NAME}:${IMAGE_TAG}"
+
+    DOCKER_COMPOSE_PATH = '/home/matia/FOEEnv/'
+    DEV_AGENT_LABEL     = 'FOE-PROD-SERVER'
+  }
+
+  /* ----------------------------------------------------
+   *  Stages
+   * ---------------------------------------------------*/
+  stages {
+
+    /* --- Build started (log only) -------------------------------*/
+    stage('Start') {
+      steps {
+        echo "STARTED: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]"
+      }
+    }
+
+    /* --- Checkout source code -----------------------------------*/
+
+    stage('Code Checkout') {
+      steps {
+        checkout scmGit(
+          branches: [[name: "${params.TAG}"]],
+          userRemoteConfigs: [[
+            credentialsId: "${GIT_CREDENTIALS_ID}",
+            url: "${GIT_REPO_URL}"
+          ]],
+          extensions: [[
+            $class: 'CloneOption',
+            depth: 1,
+            noTags: true,
+            shallow: true
+          ]]
+        )
+      }
+    }
+
+    /* --- Build Docker image -------------------------------------*/
+    stage('Build image') {
+      steps {
+        script {
+          sh 'docker version'
+          sh "docker build -t ${IMAGE_URI} ."
+        }
+      }
+    }
+
+    /* --- Push image to private registry --------------------------*/
+    stage('Publish image') {
+      steps {
+        script {
+          sh "docker push ${IMAGE_URI}"
+        }
+      }
+    }
+
+    /* --- Deploy container on DEV node ---------------------------*/
+    stage('Deploy container') {
+      agent { label "${DEV_AGENT_LABEL}" }
+      steps {
+        dir("${DOCKER_COMPOSE_PATH}") {
+          echo "Triggered by: ${env.BUILD_USER}"         // e.g. "John Doe"
+          echo "User ID: ${env.BUILD_USER_ID}"           // e.g. "jdoe"
+          echo "Email:   ${env.BUILD_USER_EMAIL}"
+          sh "docker compose  pull ${IMAGE_REPO_NAME}"
+          sh "docker compose up -d --force-recreate --remove-orphans ${IMAGE_REPO_NAME}"
+        }
+      }
+    }
+  }
+
+  /* ----------------------------------------------------
+   *  Post build actions
+   * ---------------------------------------------------*/
+  post {
+    always {
+      cleanWs()
+      script {
+        node("${DEV_AGENT_LABEL}") {
+          cleanWs()
+        }
+      }
+    }
+    success {
+      echo "SUCCESSFUL: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]"
+    }
+    failure {
+      echo "FAILED: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]"
+    }
+    aborted {
+      echo "ABORTED: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]"
+    }
+  }
+}
